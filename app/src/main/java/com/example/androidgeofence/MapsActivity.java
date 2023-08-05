@@ -13,11 +13,13 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.widget.Toast;
 
+import com.example.androidgeofence.Interface.IOnLoadLocationListener;
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
 import com.firebase.geofire.GeoQuery;
@@ -39,9 +41,11 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.Task;
+import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.karumi.dexter.Dexter;
 import com.karumi.dexter.PermissionToken;
 import com.karumi.dexter.listener.PermissionDeniedResponse;
@@ -53,7 +57,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GeoQueryEventListener {
+public class MapsActivity extends FragmentActivity implements OnMapReadyCallback, GeoQueryEventListener, IOnLoadLocationListener {
 
     private GoogleMap mMap;
     LocationRequest locationRequest;
@@ -63,6 +67,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     DatabaseReference myLocationRef;
     GeoFire geoFire;
     List<LatLng> dangerousArea;
+    IOnLoadLocationListener listener;
+    DatabaseReference myCity;
+    Location lastLocation;
+    GeoQuery geoQuery;
     private ActivityMapsBinding binding;
 
     @Override
@@ -83,9 +91,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         buildLocationCallback();
                         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(MapsActivity.this);
 
-                        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                                .findFragmentById(R.id.map);
-                        mapFragment.getMapAsync(MapsActivity.this);
+
                         initArea();
                         settingGeoFire();
                     }
@@ -105,10 +111,59 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     private void initArea() {
-        dangerousArea = new ArrayList<>();
-        dangerousArea.add(new LatLng(37.422, -122.044));
-        dangerousArea.add(new LatLng(37.422, -122.144));
-        dangerousArea.add(new LatLng(37.422, -122.244));
+
+        myCity = FirebaseDatabase.getInstance().getReference("DangerousArea").child("MyCity");
+
+        listener = this;
+
+        //load from firebase
+//        myCity.addListenerForSingleValueEvent(new ValueEventListener() {
+//            @Override
+//            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+//                List<MyLatLng> latLngList = new ArrayList<>();
+//                for (DataSnapshot locationSnapshot: dataSnapshot.getChildren()){
+//                    MyLatLng latLng = locationSnapshot.getValue(MyLatLng.class);
+//                    latLngList.add(latLng);
+//                }
+//                listener.onLoadLocationSuccess(latLngList);
+//            }
+//
+//            @Override
+//            public void onCancelled(@NonNull DatabaseError error) {
+//                listener.onLoadLocationFailed(error.getMessage());
+//            }
+//        });
+
+        myCity.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+
+                //update dangerous area
+                List<MyLatLng> latLngList = new ArrayList<>();
+                for (DataSnapshot locationSnapshot: snapshot.getChildren()){
+                    MyLatLng latLng = locationSnapshot.getValue(MyLatLng.class);
+                    latLngList.add(latLng);
+                }
+
+                listener.onLoadLocationSuccess(latLngList);
+
+
+
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+
+            }
+        });
+
+        //static data
+//        dangerousArea = new ArrayList<>();
+//        dangerousArea.add(new LatLng(37.422, -122.044));
+//        dangerousArea.add(new LatLng(37.422, -122.144));
+//        dangerousArea.add(new LatLng(37.422, -122.244));
+
+        //submit data to firebase
 
 //        FirebaseDatabase.getInstance().getReference("DangerousArea").child("MyCity").setValue(dangerousArea).addOnCompleteListener(new OnCompleteListener<Void>() {
 //            @Override
@@ -123,6 +178,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 //        });
     }
 
+    private void addUserMarker() {
+        geoFire.setLocation("You", new GeoLocation(lastLocation.getLatitude(), lastLocation.getLongitude()), new GeoFire.CompletionListener() {
+            @Override
+            public void onComplete(String key, DatabaseError error) {
+                if (currentUser != null) currentUser.remove();
+                currentUser = mMap.addMarker(new MarkerOptions().position(new LatLng(lastLocation.getLatitude(), lastLocation.getLongitude())).title("You"));
+                //after add marker move camera
+                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentUser.getPosition(), 12.0f));
+            }
+        });
+    }
+
     private void settingGeoFire() {
         myLocationRef = FirebaseDatabase.getInstance().getReference("MyLocation");
         geoFire = new GeoFire(myLocationRef);
@@ -133,15 +200,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
                 if (mMap != null) {
-                    geoFire.setLocation("You", new GeoLocation(locationResult.getLastLocation().getLatitude(), locationResult.getLastLocation().getLongitude()), new GeoFire.CompletionListener() {
-                        @Override
-                        public void onComplete(String key, DatabaseError error) {
-                            if (currentUser != null) currentUser.remove();
-                            currentUser = mMap.addMarker(new MarkerOptions().position(new LatLng(locationResult.getLastLocation().getLatitude(), locationResult.getLastLocation().getLongitude())).title("You"));
-                            //after add marker move camera
-                            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentUser.getPosition(), 12.0f));
-                        }
-                    });
+
+                    lastLocation = locationResult.getLastLocation();
+
+                    addUserMarker();
                 }
             }
         };
@@ -165,11 +227,20 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper());
         //Add circle for dangerous area
+        addCircleArea();
+    }
+
+    private void addCircleArea() {
+        if (geoQuery != null)
+        {
+            geoQuery.removeGeoQueryEventListener(this);
+            geoQuery.removeAllListeners();
+        }
         for (LatLng latLng : dangerousArea)
         {
             mMap.addCircle(new CircleOptions().center(latLng).radius(500).strokeColor(Color.BLUE).fillColor(0x220000FF).strokeWidth(5.05f));
             //create Geo query
-            GeoQuery geoQuery = geoFire.queryAtLocation(new GeoLocation(latLng.latitude, latLng.longitude), 0.5f); //500m
+            geoQuery = geoFire.queryAtLocation(new GeoLocation(latLng.latitude, latLng.longitude), 0.5f); //500m
             geoQuery.addGeoQueryEventListener(MapsActivity.this);
         }
     }
@@ -182,19 +253,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public void onKeyEntered(String key, GeoLocation location) {
-        sendNotification("PERINGATAN", String.format("%s entered the dangerous area", key));
+        sendNotification("PERINGATAN", String.format("Anda memasuki area rawan pencurian motor", key));
     }
 
 
 
     @Override
     public void onKeyExited(String key) {
-        sendNotification("PERINGATAN", String.format("%s leave the dangerous area", key));
+        sendNotification("PERINGATAN", String.format("Anda keluar area rawan pencurian motor", key));
     }
 
     @Override
     public void onKeyMoved(String key, GeoLocation location) {
-        sendNotification("PERINGATAN", String.format("%s move within the dangerous area", key));
+        sendNotification("PERINGATAN", String.format("Anda bergerak didalam area rawan pencurian motor", key));
     }
 
     @Override
@@ -232,5 +303,34 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         Notification notification = builder.build();
         notificationManager.notify(new Random().nextInt(), notification);
+    }
+
+    @Override
+    public void onLoadLocationSuccess(List<MyLatLng> latLngs) {
+        dangerousArea = new ArrayList<>();
+        for (MyLatLng myLatLng : latLngs)
+        {
+            LatLng convert = new LatLng(myLatLng.getLatitude(), myLatLng.getLongitude());
+            dangerousArea.add(convert);
+        }
+        //now after the dangerous area have a data, after that we will call map display
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
+                .findFragmentById(R.id.map);
+        mapFragment.getMapAsync(MapsActivity.this);
+        //clear map and add again
+        if (mMap != null)
+        {
+            mMap.clear();
+            //Add user marker
+            addUserMarker();
+
+            //add circle of dangerous area
+            addCircleArea();
+        }
+    }
+
+    @Override
+    public void onLoadLocationFailed(String message) {
+        Toast.makeText(this, ""+message, Toast.LENGTH_SHORT).show();
     }
 }
