@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1016776713840",
+    "project_id": "androidgeofence-909d7",
+    "storage_bucket": "androidgeofence-909d7.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1016776713840:android:4f528b6cd433d898d036b5",
+        "android_client_info": {
+          "package_name": "com.example.androidgeofence"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1016776713840-p1hkq0jv98sqlc1iosl0481g83tvs96l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA83DExMc3y1JcIObXX2HRJCYMwdXLgDEk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1016776713840-p1hkq0jv98sqlc1iosl0481g83tvs96l.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
